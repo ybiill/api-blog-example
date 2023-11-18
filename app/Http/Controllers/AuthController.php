@@ -2,9 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MPasswordreset;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use App\Models\User;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Crypt;
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+use PHPMailer\PHPMailer\SMTP;
+
 
 class AuthController extends Controller
 {
@@ -49,8 +57,116 @@ class AuthController extends Controller
                 'message' => true,
                 'data' => $user,
                 'role' => $user->role,
-                'access_token' => $token,
+                'access_token' => Crypt::encrypt($token),
             ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Gagal',
+                'success' => true,
+                'data' => $e
+            ]);
+        }
+    }
+    public function sendForgotpassword(Request $request)
+    {
+        require base_path("vendor/autoload.php");
+
+        $validator = Validator::make($request->all(), [
+            'email' => 'required',
+        ]);
+        if ($validator->fails()) {
+            return response()->json([
+                'data' => [],
+                'message' => $validator->errors(),
+                'success' => false
+            ]);
+        }
+        $validatordata = $validator->validated();
+        $user = User::where('email', $validatordata['email'])->firstOrFail();
+        $tokenrandom = Str::random(40);
+        $linkreset = "<a href='http://127.0.0.1:1234/api/forgotpassword/".$tokenrandom."'>Reset Password</a>";
+        
+        try {
+
+            $mail = new PHPMailer(true);
+            $mail->SMTPDebug = 0;
+            $mail->isSMTP();
+            $mail->Host       = 'mail.dinta.co.id';
+            $mail->SMTPAuth   = true;
+            $mail->Username   = 'dtc@dinta.co.id';
+            $mail->Password   = '@dtcdinta800';
+            $mail->SMTPSecure = 'ssl';
+            $mail->Port       = '465';
+
+            $mail->IsHTML(TRUE);
+            $mail->setFrom('dtc@dinta.co.id', 'CS Dinta Indonesia');
+            $mail->addAddress($validatordata['email']);
+
+            $mail->Subject = 'Password Reset';
+            $mail->Body    = 'A request for forgot password has been made. If you have not made this request, please ignore this email. If you have made this request, please click on the link below to reset your password. <br>'.$linkreset;
+            $mail->AltBody = 'reset password';
+
+            if(!$mail->send()){
+                return response()->json([
+                    'status' => false,
+                    'message' => "Data Tidak terikirim",
+                ]);
+            }else{
+                $emailToken = MPasswordreset::create([
+                    'email' => $validatordata['email'],
+                    'token' => $tokenrandom,
+                ]);
+                return response()->json([
+                    'message' => true,
+                    'data' => $emailToken,
+                ]);
+    
+            }
+            
+        } catch (Exception $e) {
+            return response()->json([
+                'message' => 'Gagal',
+                'success' => true,
+                'data' => $e
+            ]);
+        }
+    }
+    public function Forgotpassword(Request $request, $token)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required',
+            'password' => 'required'
+        ]);
+        if ($validator->fails()) {
+            return response()->json([
+                'data' => [],
+                'message' => $validator->errors(),
+                'success' => false
+            ]);
+        }
+        $validatordata = $validator->validated();
+        //Cek-token
+        $user = MPasswordreset::where('email', $validatordata['email'])
+            ->where('token', $token)
+            ->orderBy('created_at', 'desc')->first();
+
+        try {
+            if (!$user) {
+                return response()->json([
+                    'message' => 'Gagal Reset Password.',
+                    'success' => false
+                ]);
+            } else {
+                $user = User::where('email', $validatordata['email'])->firstOrFail();
+                $user->update([
+                    'password' => Hash::make($validatordata['password'])
+                ]);
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Password Berhasil DiUpdate.',
+                    'data' => $user
+                ]);
+            }
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Gagal',

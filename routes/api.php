@@ -19,6 +19,11 @@ use App\Http\Controllers\Blog;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/forgotpassword/{token}', [AuthController::class, 'Forgotpassword']);
+Route::post('/sendForgotpassword', [AuthController::class, 'sendForgotpassword']);
+
+
+
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
