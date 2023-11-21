@@ -74,6 +74,7 @@ class AuthController extends Controller
         $validator = Validator::make($request->all(), [
             'email' => 'required',
         ]);
+
         if ($validator->fails()) {
             return response()->json([
                 'data' => [],
@@ -82,12 +83,12 @@ class AuthController extends Controller
             ]);
         }
         $validatordata = $validator->validated();
-        $user = User::where('email', $validatordata['email'])->firstOrFail();
-        $tokenrandom = Str::random(40);
-        $linkreset = "<a href='http://127.0.0.1:1234/api/forgotpassword/".$tokenrandom."'>Reset Password</a>";
-        
-        try {
+        MPasswordreset::where('email', $validatordata['email'])->delete();
 
+        $tokenrandom = Str::random(70);
+        $linkreset = "<a href='http://127.0.0.1:1234/api/forgotpassword/" . $tokenrandom . "'>Reset Password</a>";
+
+        try {
             $mail = new PHPMailer(true);
             $mail->SMTPDebug = 0;
             $mail->isSMTP();
@@ -103,15 +104,15 @@ class AuthController extends Controller
             $mail->addAddress($validatordata['email']);
 
             $mail->Subject = 'Password Reset';
-            $mail->Body    = 'A request for forgot password has been made. If you have not made this request, please ignore this email. If you have made this request, please click on the link below to reset your password. <br>'.$linkreset;
+            $mail->Body    = 'A request for forgot password has been made. If you have not made this request, please ignore this email. If you have made this request, please click on the link below to reset your password. <br>' . $linkreset;
             $mail->AltBody = 'reset password';
 
-            if(!$mail->send()){
+            if (!$mail->send()) {
                 return response()->json([
                     'status' => false,
                     'message' => "Data Tidak terikirim",
                 ]);
-            }else{
+            } else {
                 $emailToken = MPasswordreset::create([
                     'email' => $validatordata['email'],
                     'token' => $tokenrandom,
@@ -120,9 +121,7 @@ class AuthController extends Controller
                     'message' => true,
                     'data' => $emailToken,
                 ]);
-    
             }
-            
         } catch (Exception $e) {
             return response()->json([
                 'message' => 'Gagal',
@@ -134,7 +133,6 @@ class AuthController extends Controller
     public function Forgotpassword(Request $request, $token)
     {
         $validator = Validator::make($request->all(), [
-            'email' => 'required',
             'password' => 'required'
         ]);
         if ($validator->fails()) {
@@ -146,21 +144,22 @@ class AuthController extends Controller
         }
         $validatordata = $validator->validated();
         //Cek-token
-        $user = MPasswordreset::where('email', $validatordata['email'])
-            ->where('token', $token)
+        $user = MPasswordreset::where('token', $token)
             ->orderBy('created_at', 'desc')->first();
 
         try {
             if (!$user) {
                 return response()->json([
-                    'message' => 'Gagal Reset Password.',
+                    'message' => 'Link Reset Expired.',
                     'success' => false
                 ]);
             } else {
-                $user = User::where('email', $validatordata['email'])->firstOrFail();
+                $user = User::where('email', $user['email'])->firstOrFail();
                 $user->update([
                     'password' => Hash::make($validatordata['password'])
                 ]);
+                MPasswordreset::where('email', $user['email'])->delete();
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Password Berhasil DiUpdate.',
